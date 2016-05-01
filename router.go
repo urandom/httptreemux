@@ -15,8 +15,6 @@ import (
 	"github.com/dimfeld/httppath"
 )
 
-type PanicHandler func(http.ResponseWriter, *http.Request, interface{})
-
 // RedirectBehavior sets the behavior when the router redirects the request to the
 // canonical version of the requested URL using RedirectTrailingSlash or RedirectClean.
 // The default behavior is to return a 301 status, redirecting the browser to the version
@@ -50,6 +48,7 @@ const (
 	URLPath                      // Use r.URL.Path
 
 	paramsKey = ctxKey("params")
+	errorKey  = ctxKey("error")
 )
 
 type TreeMux struct {
@@ -58,7 +57,7 @@ type TreeMux struct {
 	Group
 
 	// The default PanicHandler just returns a 500 code.
-	PanicHandler PanicHandler
+	PanicHandler http.HandlerFunc
 
 	// The default NotFoundHandler is http.NotFound.
 	NotFoundHandler http.HandlerFunc
@@ -121,7 +120,7 @@ func (t *TreeMux) Dump() string {
 
 func (t *TreeMux) serveHTTPPanic(w http.ResponseWriter, r *http.Request) {
 	if err := recover(); err != nil {
-		t.PanicHandler(w, r, err)
+		t.PanicHandler(w, r.WithContext(context.WithValue(r.Context(), errorKey, err)))
 	}
 }
 
@@ -249,7 +248,7 @@ func (t *TreeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	handler(w, r.WithContext(context.WithValue(r.Context(), paramsKey, paramMap)))
+	handler(w, r.Whttp.HandlerFuncithContext(context.WithValue(r.Context(), paramsKey, paramMap)))
 }
 
 // MethodNotAllowedHandler is the default handler for TreeMux.MethodNotAllowedHandler,
@@ -281,11 +280,15 @@ func New() *TreeMux {
 	return tm
 }
 
-func RouteParams(r *http.Request) map[string]string {
+func RequestParams(r *http.Request) map[string]string {
 	params := r.Context().Value(paramsKey)
 	if p, ok := params.(map[string]string); ok {
 		return p
 	}
 
 	return nil
+}
+
+func RequestError(r *http.Request) interface{} {
+	return r.Context().Value(errorKey)
 }
