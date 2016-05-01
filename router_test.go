@@ -11,9 +11,9 @@ import (
 	"testing"
 )
 
-func simpleHandler(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+func simpleHandler(w http.ResponseWriter, r *http.Request) {}
 
-func panicHandler(w http.ResponseWriter, r *http.Request, params map[string]string) {
+func panicHandler(w http.ResponseWriter, r *http.Request) {
 	panic("test panic")
 }
 
@@ -75,8 +75,8 @@ func TestMethods(t *testing.T) {
 func testMethods(t *testing.T, newRequest RequestCreator, headCanUseGet bool) {
 	var result string
 
-	makeHandler := func(method string) HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	makeHandler := func(method string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
 			result = method
 		}
 	}
@@ -151,7 +151,7 @@ func TestMethodNotAllowedHandler(t *testing.T) {
 	calledNotAllowed := false
 
 	notAllowedHandler := func(w http.ResponseWriter, r *http.Request,
-		methods map[string]HandlerFunc) {
+		methods map[string]http.HandlerFunc) {
 
 		calledNotAllowed = true
 
@@ -204,12 +204,12 @@ func TestMethodNotAllowedHandler(t *testing.T) {
 }
 
 func TestOptionsHandler(t *testing.T) {
-	optionsHandler := func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+	optionsHandler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(http.StatusNoContent)
 	}
 
-	customOptionsHandler := func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+	customOptionsHandler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "httptreemux.com")
 		w.WriteHeader(http.StatusUnauthorized)
 	}
@@ -346,7 +346,7 @@ func behaviorToCode(b RedirectBehavior) int {
 func testRedirect(t *testing.T, defaultBehavior, getBehavior, postBehavior RedirectBehavior, customMethods bool,
 	newRequest RequestCreator) {
 
-	var redirHandler = func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	var redirHandler = func(w http.ResponseWriter, r *http.Request) {
 		// Returning this instead of 200 makes it easy to verify that the handler is actually getting called.
 		w.WriteHeader(http.StatusNoContent)
 	}
@@ -535,7 +535,7 @@ func TestRoot(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Log(scenario.description)
 		handlerCalled := false
-		handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+		handler := func(w http.ResponseWriter, r *http.Request) {
 			handlerCalled = true
 		}
 		router := New()
@@ -553,9 +553,10 @@ func TestRoot(t *testing.T) {
 
 func TestWildcardAtSplitNode(t *testing.T) {
 	var suppliedParam string
-	simpleHandler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	simpleHandler := func(w http.ResponseWriter, r *http.Request) {
+		params := RouteParams(r)
 		t.Log(params)
-		suppliedParam, _ = params["slug"]
+		suppliedParam = params["slug"]
 	}
 
 	router := New()
@@ -602,10 +603,12 @@ func TestWildcardAtSplitNode(t *testing.T) {
 
 func TestSlash(t *testing.T) {
 	param := ""
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		params := RouteParams(r)
 		param = params["param"]
 	}
-	ymHandler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	ymHandler := func(w http.ResponseWriter, r *http.Request) {
+		params := RouteParams(r)
 		param = params["year"] + " " + params["month"]
 	}
 	router := New()
@@ -632,7 +635,8 @@ func TestQueryString(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Log(scenario.description)
 		param := ""
-		handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+		handler := func(w http.ResponseWriter, r *http.Request) {
+			params := RouteParams(r)
 			param = params["param"]
 		}
 		router := New()
@@ -666,11 +670,11 @@ func TestQueryString(t *testing.T) {
 func TestPathSource(t *testing.T) {
 	var called string
 
-	appleHandler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	appleHandler := func(w http.ResponseWriter, r *http.Request) {
 		called = "apples"
 	}
 
-	bananaHandler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
+	bananaHandler := func(w http.ResponseWriter, r *http.Request) {
 		called = "bananas"
 	}
 	router := New()

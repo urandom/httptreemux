@@ -1,3 +1,5 @@
+// +build go1.7
+
 // This is inspired by Julien Schmidt's httprouter, in that it uses a patricia tree, but the
 // implementation is rather different. Specifically, the routing rules are relaxed so that a
 // single path segment may be a wildcard in one route and a static token in another. This gives a
@@ -5,6 +7,7 @@
 package httptreemux
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,8 +15,6 @@ import (
 	"github.com/dimfeld/httppath"
 )
 
-// The params argument contains the parameters parsed from wildcards and catch-alls in the URL.
-type HandlerFunc func(http.ResponseWriter, *http.Request, map[string]string)
 type PanicHandler func(http.ResponseWriter, *http.Request, interface{})
 
 // RedirectBehavior sets the behavior when the router redirects the request to the
@@ -37,6 +38,8 @@ type RedirectBehavior int
 
 type PathSource int
 
+type ctxKey string
+
 const (
 	Redirect301 RedirectBehavior = iota // Return 301 Moved Permanently
 	Redirect307                         // Return 307 HTTP/1.1 Temporary Redirect
@@ -45,6 +48,8 @@ const (
 
 	RequestURI PathSource = iota // Use r.RequestURI
 	URLPath                      // Use r.URL.Path
+
+	paramsKey = ctxKey("params")
 )
 
 type TreeMux struct {
@@ -56,11 +61,11 @@ type TreeMux struct {
 	PanicHandler PanicHandler
 
 	// The default NotFoundHandler is http.NotFound.
-	NotFoundHandler func(w http.ResponseWriter, r *http.Request)
+	NotFoundHandler http.HandlerFunc
 
 	// Any OPTIONS request that matches a path without its own OPTIONS handler will use this handler,
 	// if set, instead of calling MethodNotAllowedHandler.
-	OptionsHandler HandlerFunc
+	OptionsHandler http.HandlerFunc
 
 	// MethodNotAllowedHandler is called when a pattern matches, but that
 	// pattern does not have a handler for the requested method. The default
@@ -69,7 +74,7 @@ type TreeMux struct {
 	// The methods parameter contains the map of each method to the corresponding
 	// handler function.
 	MethodNotAllowedHandler func(w http.ResponseWriter, r *http.Request,
-		methods map[string]HandlerFunc)
+		methods map[string]http.HandlerFunc)
 
 	// HeadCanUseGet allows the router to use the GET handler to respond to
 	// HEAD requests if no explicit HEAD handler has been added for the
@@ -244,14 +249,14 @@ func (t *TreeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	handler(w, r, paramMap)
+	handler(w, r.WithContext(context.WithValue(r.Context(), paramsKey, paramMap)))
 }
 
 // MethodNotAllowedHandler is the default handler for TreeMux.MethodNotAllowedHandler,
 // which is called for patterns that match, but do not have a handler installed for the
 // requested method. It simply writes the status code http.StatusMethodNotAllowed.
 func MethodNotAllowedHandler(w http.ResponseWriter, r *http.Request,
-	methods map[string]HandlerFunc) {
+	methods map[string]http.HandlerFunc) {
 
 	for m := range methods {
 		w.Header().Add("Allow", m)
@@ -274,4 +279,13 @@ func New() *TreeMux {
 	}
 	tm.Group.mux = tm
 	return tm
+}
+
+func RouteParams(r *http.Request) map[string]string {
+	params := r.Context().Value(paramsKey)
+	if p, ok := params.(map[string]string); ok {
+		return p
+	}
+
+	return nil
 }
